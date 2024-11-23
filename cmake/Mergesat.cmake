@@ -2,7 +2,7 @@ include(ExternalProject)
 
 ExternalProject_add(Mergesat
     GIT_REPOSITORY "https://github.com/conp-solutions/mergesat.git"
-    GIT_TAG "b74c8b6467b1ea0a6254d9f7a2e9a1c120a892bf"
+    GIT_TAG "a694893e50eed973c0f01b47c092b86dface1eb5"
     UPDATE_COMMAND ""
     CONFIGURE_COMMAND ${CMAKE_MAKE_PROGRAM} config prefix=${CMAKE_CURRENT_BINARY_DIR}/external
     BUILD_IN_SOURCE 1

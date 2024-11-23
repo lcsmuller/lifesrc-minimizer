@@ -1,7 +1,6 @@
 project(gol-sat)
 cmake_minimum_required(VERSION 2.8)
 
-find_package(Boost 1.36.0 COMPONENTS program_options)
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin)
 set(CMAKE_CXX_FLAGS "-Wall -Wextra -std=c++11 -O2")
@@ -17,6 +16,9 @@ add_executable(gol-sat
 )
 
 include(Mergesat)
-include_directories(${Boost_INCLUDE_DIRS} ${Mergesat_INCLUDE_DIRS})
-target_link_libraries(gol-sat ${Boost_LIBRARIES} ${Mergesat_LIBRARIES})
+include_directories(${Mergesat_INCLUDE_DIRS})
+target_link_libraries(gol-sat ${Mergesat_LIBRARIES})
 add_dependencies(gol-sat MergesatLib)
+
+# Add pthread explicitly
+target_link_libraries(gol-sat PRIVATE pthread)

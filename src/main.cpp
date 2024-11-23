@@ -31,8 +31,8 @@
 #include <iostream>
 
 int main(int argc, char** argv) {
-    Options options;
-    if (!parseCommandLine(argc, argv, options)) {
+    Options options = {};
+    if (!parseCommandLine(argc, argv, &options)) {
         return 1;
     }
 

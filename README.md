@@ -4,7 +4,7 @@ A SAT-based forward/backwards solver for Conway's "Game of Life".
 
 ## Compile
 
-1. Make sure `git`, `cmake`, and `boost::program_options` are installed
+1. Make sure `git` and `cmake` are installed
 2. Clone the repository: `$ git clone https://github.com/flopp/gol-sat`
 3. Change into the newly created directory: `$ cd gol-sat`
 2. Build: `$ make`
