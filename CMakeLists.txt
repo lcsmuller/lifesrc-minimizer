@@ -12,7 +12,6 @@ add_executable(gol-sat
   src/formula.cpp
   src/main.cpp
   src/pattern.cpp
-  src/satSolver.cpp
 )
 
 include(Mergesat)

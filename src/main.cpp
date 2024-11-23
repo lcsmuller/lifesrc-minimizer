@@ -1,39 +1,27 @@
-/*******************************************************************************
- * gol-sat
- *
- * Copyright (c) 2015 Florian Pigorsch
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
- ******************************************************************************/
+#include <fstream>
+#include <iostream>
 
 #include "commandline.h"
 #include "field.h"
 #include "formula.h"
 #include "pattern.h"
-#include "satSolver.h"
-#include <fstream>
-#include <iostream>
+
+#ifdef DEBUG_MODE
+void learnCallback(void* state, int* clause) {
+    (void)state;
+    std::cout << "Learned clause: ";
+    while (*clause != 0) { // Clause terminator
+        std::cout << *clause << " ";
+        ++clause;
+    }
+    std::cout << std::endl;
+}
+#endif // DEBUG_MODE
 
 int main(int argc, char** argv) {
     Options options = {};
     if (!parseCommandLine(argc, argv, &options)) {
-        return 1;
+        return EXIT_FAILURE;
     }
 
     std::cout << "-- Reading pattern from file: " << options.pattern
@@ -48,27 +36,49 @@ int main(int argc, char** argv) {
         pat.load(f);
     } catch (std::exception& e) {
         std::cout << "-- Error: " << e.what() << std::endl;
-        return 1;
+        return EXIT_FAILURE;
     }
 
-    SatSolver s;
+    CMergeSat* s = cmergesat_init();
+#ifdef DEBUG_MODE
+    cmergesat_set_learn(s, NULL, 2, learnCallback);
+#endif // DEBUG_MODE
 
     std::cout << "-- Building formula for " << options.evolutions
               << " evolution steps..." << std::endl;
-    std::vector<Field> fields;
+    Field** fields = (Field**)malloc(sizeof(Field*) * (options.evolutions + 1));
+    if (!fields) {
+        std::cerr << "-- Error: Memory allocation for fields failed."
+                  << std::endl;
+        cmergesat_release(s);
+        return EXIT_FAILURE;
+    }
+
     for (int g = 0; g <= options.evolutions; ++g) {
-        if (!options.grow) {
-            fields.push_back(Field(s, pat.width(), pat.height()));
-        } else {
-            if (options.backwards) {
-                fields.push_back(
-                    Field(s, pat.width() + 2 * (options.evolutions - g),
-                          pat.height() + 2 * (options.evolutions - g)));
-            } else {
-                fields.push_back(
-                    Field(s, pat.width() + 2 * g, pat.height() + 2 * g));
-            }
+        int width = pat.width();
+        int height = pat.height();
+
+        // Adjust field size based on evolution and growth options
+        if (options.grow) {
+            int growth = (options.backwards) ? (options.evolutions - g) : g;
+            width += 2 * growth;
+            height += 2 * growth;
         }
+
+        // Create field for the current generation
+        fields[g] = Field_create(s, width, height);
+        if (!fields[g]) {
+            std::cerr << "-- Error: Field creation failed for generation " << g
+                      << "." << std::endl;
+            for (int i = 0; i < g; ++i) {
+                Field_destroy(fields[i]);
+            }
+            free(fields);
+            cmergesat_release(s);
+            return EXIT_FAILURE;
+        }
+
+        // Add transitions between generations
         if (g > 0) {
             transition(s, fields[g - 1], fields[g]);
         }
@@ -77,20 +87,25 @@ int main(int argc, char** argv) {
     if (options.backwards) {
         std::cout << "-- Setting pattern constraint on last generation..."
                   << std::endl;
-        patternConstraint(s, fields.back(), pat);
+        patternConstraint(s, fields[options.evolutions], pat);
     } else {
         std::cout << "-- Setting pattern constraint on first generation..."
                   << std::endl;
-        patternConstraint(s, fields.front(), pat);
+        patternConstraint(s, fields[0], pat);
     }
 
     std::cout << "-- Solving formula..." << std::endl;
-    if (!s.solve()) {
-        std::cout
+    if (!cmergesat_solve(s)) {
+        std::cerr
             << "-- Formula is not solvable. The selected pattern is probably "
                "too restrictive!"
             << std::endl;
-        return 1;
+        for (int g = 0; g <= options.evolutions; ++g) {
+            Field_destroy(fields[g]);
+        }
+        free(fields);
+        cmergesat_release(s);
+        return EXIT_FAILURE;
     }
 
     std::cout << std::endl;
@@ -114,9 +129,15 @@ int main(int argc, char** argv) {
                 std::cout << "-- Evolves to:" << std::endl;
             }
         }
-        fields[g].print(std::cout, s);
+        Field_print(s, fields[g], stdout);
         std::cout << std::endl;
     }
 
-    return 0;
+    for (int g = 0; g <= options.evolutions; ++g) {
+        Field_destroy(fields[g]);
+    }
+    free(fields);
+    cmergesat_release(s);
+
+    return EXIT_SUCCESS;
 }
