@@ -1,9 +1,15 @@
 #ifndef GOLSAT_FORMULA_H
 #define GOLSAT_FORMULA_H
 
-class Pattern;
+struct golsat_field;
+struct golsat_pattern;
 
-void transition(CMergeSat* s, const Field* current, const Field* next);
-void patternConstraint(CMergeSat* s, const Field* field, const Pattern& pat);
+void golsat_formula_transition(CMergeSat *s,
+                               const struct golsat_field *current,
+                               const struct golsat_field *next);
+
+void golsat_formula_constraint(CMergeSat *s,
+                               const struct golsat_field *field,
+                               const struct golsat_pattern *pat);
 
 #endif /* !GOLSAT_FORMULA_H */

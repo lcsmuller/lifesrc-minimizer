@@ -1,25 +1,39 @@
-THIS_MAKEFILE   = $(lastword $(MAKEFILE_LIST))
-BASE_DIR        = $(dir $(realpath $(THIS_MAKEFILE)))
-BUILD_DIR       = $(BASE_DIR)build
+CC = g++
 
-.PHONY: all clean config
+SRC_DIR              = src
+MERGESAT_DIR         = mergesat
+MERGESAT_BUILD_DIR   = $(MERGESAT_DIR)/build/release
+MERGESAT_LIB_DIR     = $(MERGESAT_BUILD_DIR)/lib
+MERGESAT_INCLUDE_DIR = $(MERGESAT_DIR)/minisat
 
-all: $(BUILD_DIR)
-	$(MAKE) -C $(BUILD_DIR) $@
+LIBMERGESAT          = $(MERGESAT_LIB_DIR)/libmergesat.a
+
+OBJS    = $(SRC_DIR)/commandline.o \
+		  $(SRC_DIR)/field.o       \
+		  $(SRC_DIR)/formula.o     \
+		  $(SRC_DIR)/pattern.o
+MAIN    = gol-sat
+
+CFLAGS  = -std=c++98 -I$(SRC_DIR) -I$(MERGESAT_INCLUDE_DIR)
+LDFLAGS = -L$(MERGESAT_LIB_DIR)
+LDLIBS  = -lmergesat -lpthread
+
+all: $(MAIN)
+
+$(MAIN): $(OBJS)
+
+$(OBJS): $(LIBMERGESAT)
+
+$(LIBMERGESAT):
+	@ echo "Initializing mergesat submodule..."
+	git submodule update --init --recursive
+	@ $(MAKE) -C $(MERGESAT_DIR)
 
 clean:
-	@echo "-- Cleaning up"
-	rm -rf $(BUILD_DIR) bin
-	rm -rf $$(find $(BASE_DIR) -name "*~")
+	@ $(MAKE) -C $(SRC_DIR) $@
+	@ rm -f $(MAIN)
 
-config: $(BUILD_DIR)
-	$(MAKE) edit_cache
+purge: clean
+	git submodule deinit -f $(MERGESAT_DIR)
 
-format:
-	clang-format -i src/*
-
-$(BUILD_DIR):
-	@echo "-- Creating build directory: $@"
-	mkdir -p $@
-	(cd $@; cmake $(BASE_DIR))
-
+.PHONY: all clean purge

@@ -4,16 +4,16 @@ A SAT-based forward/backwards solver for Conway's "Game of Life".
 
 ## Compile
 
-1. Make sure `git` and `cmake` are installed
-2. Clone the repository: `$ git clone https://github.com/flopp/gol-sat`
+1. Make sure `git` is installed
+2. Clone the repository: `$ git clone https://github.com/lcsmuller/gol-sat`
 3. Change into the newly created directory: `$ cd gol-sat`
 2. Build: `$ make`
 
 ## Usage
 
-Run `$ bin/gol-sat -e X pattern.txt` to perform a *backwards computation* consisting of `X` steps an finally yields the pattern specified in the file `pattern.txt`.
+Run `$ ./gol-sat -e X pattern.txt` to perform a *backwards computation* consisting of `X` steps an finally yields the pattern specified in the file `pattern.txt`.
 
-Run `$ bin/gol-sat -f -e X pattern.txt` to perform a *forward computation* consisting of `X` steps starting with the pattern specified in the file `pattern.txt`.
+Run `$ ./gol-sat -f -e X pattern.txt` to perform a *forward computation* consisting of `X` steps starting with the pattern specified in the file `pattern.txt`.
 
 ## Pattern Format
 The text file format used for patterns starts with two numbers specifying the `width` and `height` of the pattern. Then `width` * `height` cell characters follow, where
@@ -28,7 +28,7 @@ The `patterns` subdirectory contains some samples.
 The following command performs backwards computation consisting of two evolution steps (option `-e 2`) that finally yield the game of life pattern specified in the file `patterns/smily.txt`:
 
 ```
-$ bin/gol-sat -e 2 patterns/smily.txt
+$ ./gol-sat -e 2 patterns/smily.txt
 -- Reading pattern from file: patterns/smily.txt
 -- Building formula for 2 evolution steps...
 -- Setting pattern constraint on last generation...

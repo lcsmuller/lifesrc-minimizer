@@ -1,9 +1,12 @@
-#include "commandline.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
-static void usage(char* program) {
+#include "commandline.h"
+
+static void
+_golsat_commandline_usage(char *program)
+{
     printf("Usage: %s [OPTIONS]... PATTERN_FILE\n"
            "Options:\n"
            "  -h, --help          Display this help message\n"
@@ -15,8 +18,13 @@ static void usage(char* program) {
            program);
 }
 
-int parseCommandLine(int argc, char** argv, Options* options) {
+int
+golsat_commandline_parse(int argc, char **argv, struct golsat_options *options)
+{
     int opt;
+    extern int optind;
+    extern char *optarg;
+
     options->evolutions = 1;
     options->backwards = 1;
     options->grow = 0;
@@ -25,7 +33,7 @@ int parseCommandLine(int argc, char** argv, Options* options) {
     while ((opt = getopt(argc, argv, "hfge:")) != -1) {
         switch (opt) {
         case 'h':
-            usage(argv[0]);
+            _golsat_commandline_usage(argv[0]);
             return 0;
         case 'f':
             options->backwards = 0;
@@ -34,10 +42,10 @@ int parseCommandLine(int argc, char** argv, Options* options) {
             options->grow = 1;
             break;
         case 'e':
-            options->evolutions = atoi(optarg);
+            options->evolutions = (int)strtol(optarg, NULL, 10);
             break;
         default:
-            usage(argv[0]);
+            _golsat_commandline_usage(argv[0]);
             return 0;
         }
     }
@@ -48,12 +56,12 @@ int parseCommandLine(int argc, char** argv, Options* options) {
 
     if (options->pattern == NULL) {
         fprintf(stderr, "No PATTERN_FILE given\n");
-        usage(argv[0]);
+        _golsat_commandline_usage(argv[0]);
         return 0;
     }
     if (options->evolutions < 1) {
         fprintf(stderr, "Specified number of evolutions must be >= 1\n");
-        usage(argv[0]);
+        _golsat_commandline_usage(argv[0]);
         return 0;
     }
 
