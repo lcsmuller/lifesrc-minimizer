@@ -57,18 +57,8 @@ main(int argc, char **argv)
     }
 
     for (int g = 0; g <= options.evolutions; ++g) {
-        int width = pat->width;
-        int height = pat->height;
-
-        // Adjust field size based on evolution and growth options
-        if (options.grow) {
-            int growth = (options.backwards) ? (options.evolutions - g) : g;
-            width += 2 * growth;
-            height += 2 * growth;
-        }
-
         // Create field for the current generation
-        fields[g] = golsat_field_create(s, width, height);
+        fields[g] = golsat_field_create(s, pat->width, pat->height);
         if (!fields[g]) {
             fprintf(stderr,
                     "-- Error: Field creation failed for generation %d.\n", g);
@@ -86,14 +76,8 @@ main(int argc, char **argv)
         }
     }
 
-    if (options.backwards) {
-        printf("-- Setting pattern constraint on last generation...\n");
-        golsat_formula_constraint(s, fields[options.evolutions], pat);
-    }
-    else {
-        printf("-- Setting pattern constraint on first generation...\n");
-        golsat_formula_constraint(s, fields[0], pat);
-    }
+    printf("-- Setting pattern constraint on last generation...\n");
+    golsat_formula_constraint(s, fields[options.evolutions], pat);
 
     printf("-- Solving formula...\n");
     if (!cmergesat_solve(s)) {
@@ -110,27 +94,14 @@ main(int argc, char **argv)
 
     printf("\n");
     for (int g = 0; g <= options.evolutions; ++g) {
-        if (options.backwards) {
-            if (g == 0) {
-                printf("-- Initial generation:\n");
-            }
-            else if (g == options.evolutions) {
-                printf("-- Evolves to final generation (from pattern):\n");
-            }
-            else {
-                printf("-- Evolves to:\n");
-            }
+        if (g == 0) {
+            printf("-- Initial generation:\n");
+        }
+        else if (g == options.evolutions) {
+            printf("-- Evolves to final generation (from pattern):\n");
         }
         else {
-            if (g == 0) {
-                printf("-- Initial generation (from pattern):\n");
-            }
-            else if (g == options.evolutions) {
-                printf("-- Evolves to final generation:\n");
-            }
-            else {
-                printf("-- Evolves to:\n");
-            }
+            printf("-- Evolves to:\n");
         }
         golsat_field_print(s, fields[g], stdout);
         printf("\n");

@@ -94,48 +94,14 @@ golsat_formula_transition(CMergeSat *s,
                           const struct golsat_field *current,
                           const struct golsat_field *next)
 {
-    int offset_x = 0;
-    int offset_y = 0;
-    int from_x, to_x, from_y, to_y;
-
-    if ((current->m_width == next->m_width)
-        && (current->m_height == next->m_height))
-    {
-        // same field size
-        from_x = -1;
-        to_x = current->m_width;
-        from_y = -1;
-        to_y = current->m_height;
-    }
-    else if ((current->m_width + 2 == next->m_width)
-             && (current->m_height + 2 == next->m_height))
-    {
-        // field size expands
-        from_x = -2;
-        to_x = current->m_width + 1;
-        from_y = -2;
-        to_y = current->m_height + 1;
-        offset_x = 1;
-        offset_y = 1;
-    }
-    else if ((current->m_width == next->m_width + 2)
-             && (current->m_height == next->m_height + 2))
-    {
-        // field size shrinks
-        from_x = -1;
-        to_x = current->m_width;
-        from_y = -1;
-        to_y = current->m_height;
-        offset_x = -1;
-        offset_y = -1;
-    }
-    else {
-        assert(0 && "incompatible field sizes");
-    }
+    assert(current->m_width == next->m_width
+           && "incompatible or unsupported field sizes");
+    assert(current->m_height == next->m_height
+           && "incompatible or unsupported field sizes");
 
     int neighbours[MAX_NEIGHBOURS_SIZE];
-    for (int x = from_x; x <= to_x; ++x) {
-        for (int y = from_y; y <= to_y; ++y) {
+    for (int x = -1; x <= current->m_width; ++x) {
+        for (int y = -1; y <= current->m_height; ++y) {
             size_t sz = 0;
             for (int dx = -1; dx <= 1; ++dx) {
                 for (int dy = -1; dy <= 1; ++dy) {
@@ -145,9 +111,9 @@ golsat_formula_transition(CMergeSat *s,
                         golsat_field_get_lit(current, x + dx, y + dy);
                 }
             }
-            _golsat_formula_rule(
-                s, golsat_field_get_lit(current, x, y), neighbours, sz,
-                golsat_field_get_lit(next, x + offset_x, y + offset_y));
+            _golsat_formula_rule(s, golsat_field_get_lit(current, x, y),
+                                 neighbours, sz,
+                                 golsat_field_get_lit(next, x, y));
         }
     }
 }

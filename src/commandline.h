@@ -3,8 +3,6 @@
 
 struct golsat_options {
     int evolutions;
-    int backwards;
-    int grow;
     char *pattern;
 };
 
