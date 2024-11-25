@@ -4,6 +4,8 @@
 #include "formula.h"
 #include "pattern.h"
 
+#define MAX_NEIGHBOURS_SIZE 8
+
 static void
 _golsat_formula_add_implied(CMergeSat *s,
                             const int *clause,
@@ -19,12 +21,12 @@ _golsat_formula_add_implied(CMergeSat *s,
 
 static void
 _golsat_formula_rule(CMergeSat *s,
-                     const int cell,
-                     const int n[],
+                     const int current,
+                     const int neighbours[MAX_NEIGHBOURS_SIZE],
                      const size_t size,
                      const int next)
 {
-    assert(size == 8);
+    assert(size == MAX_NEIGHBOURS_SIZE);
 
     // Underpopulation (<=1 alive neighbor -> cell dies)
     for (size_t possiblyalive = 0; possiblyalive < size; ++possiblyalive) {
@@ -32,7 +34,7 @@ _golsat_formula_rule(CMergeSat *s,
         size_t sz = 0;
         for (size_t dead = 0; dead < size; ++dead) {
             if (dead == possiblyalive) continue;
-            cond[sz++] = -n[dead];
+            cond[sz++] = -neighbours[dead];
         }
         _golsat_formula_add_implied(s, cond, sz, -next);
         free(cond);
@@ -44,11 +46,12 @@ _golsat_formula_rule(CMergeSat *s,
             int *cond = (int *)malloc((size + 1) * sizeof(int));
             size_t sz = 0;
             for (size_t i = 0; i < size; ++i) {
-                cond[sz++] = (i == alive1 || i == alive2) ? n[i] : -n[i];
+                cond[sz++] = (i == alive1 || i == alive2) ? neighbours[i]
+                                                          : -neighbours[i];
             }
-            cond[sz++] = cell; // Add current cell state
+            cond[sz++] = current; // Add current cell state
             _golsat_formula_add_implied(s, cond, sz, next);
-            cond[sz - 1] = -cell; // Replace with negated cell
+            cond[sz - 1] = -current; // Replace with negated cell
             _golsat_formula_add_implied(s, cond, sz, -next);
             free(cond);
         }
@@ -62,8 +65,8 @@ _golsat_formula_rule(CMergeSat *s,
                 size_t sz = 0;
                 for (size_t i = 0; i < size; ++i) {
                     cond[sz++] = (i == alive1 || i == alive2 || i == alive3)
-                                     ? n[i]
-                                     : -n[i];
+                                     ? neighbours[i]
+                                     : -neighbours[i];
                 }
                 _golsat_formula_add_implied(s, cond, sz, next);
                 free(cond);
@@ -76,8 +79,8 @@ _golsat_formula_rule(CMergeSat *s,
         for (size_t alive2 = alive1 + 1; alive2 < size; ++alive2) {
             for (size_t alive3 = alive2 + 1; alive3 < size; ++alive3) {
                 for (size_t alive4 = alive3 + 1; alive4 < size; ++alive4) {
-                    int cond[] = { n[alive1], n[alive2], n[alive3],
-                                   n[alive4] };
+                    int cond[] = { neighbours[alive1], neighbours[alive2],
+                                   neighbours[alive3], neighbours[alive4] };
                     _golsat_formula_add_implied(
                         s, cond, sizeof(cond) / sizeof(cond[0]), -next);
                 }
@@ -130,13 +133,14 @@ golsat_formula_transition(CMergeSat *s,
         assert(0 && "incompatible field sizes");
     }
 
+    int neighbours[MAX_NEIGHBOURS_SIZE];
     for (int x = from_x; x <= to_x; ++x) {
         for (int y = from_y; y <= to_y; ++y) {
-            int *neighbours = (int *)malloc(8 * sizeof(int));
             size_t sz = 0;
             for (int dx = -1; dx <= 1; ++dx) {
                 for (int dy = -1; dy <= 1; ++dy) {
                     if (dx == 0 && dy == 0) continue;
+
                     neighbours[sz++] =
                         golsat_field_get_lit(current, x + dx, y + dy);
                 }
@@ -144,7 +148,6 @@ golsat_formula_transition(CMergeSat *s,
             _golsat_formula_rule(
                 s, golsat_field_get_lit(current, x, y), neighbours, sz,
                 golsat_field_get_lit(next, x + offset_x, y + offset_y));
-            free(neighbours);
         }
     }
 }

@@ -58,17 +58,14 @@ golsat_pattern_create(FILE *file)
 
         fprintf(stderr, "Pattern parsing failed when parsing cells "
                         "(too many characters).\n");
-        free(pattern->cells);
-        free(pattern);
+        golsat_pattern_cleanup(pattern);
         return NULL;
     }
 
     if (size != capacity) {
         fprintf(stderr, "Pattern parsing failed when parsing cell (not enough "
                         "characters).\n");
-        free(pattern->cells);
-        pattern->cells = NULL;
-        free(pattern);
+        golsat_pattern_cleanup(pattern);
         return NULL;
     }
 

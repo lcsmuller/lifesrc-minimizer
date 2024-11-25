@@ -8,8 +8,8 @@
 struct golsat_field {
     int m_width;
     int m_height;
-    int *m_literals;
     int m_false;
+    int *m_literals;
 };
 
 struct golsat_field *golsat_field_create(CMergeSat *s, int width, int height);

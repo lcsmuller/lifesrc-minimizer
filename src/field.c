@@ -56,7 +56,7 @@ golsat_field_print(CMergeSat *s,
         for (int x = 0; x < field->m_width; ++x) {
             const int lit = golsat_field_get_lit(field, x, y);
             int ret_lit = cmergesat_val(s, lit);
-            // "." if cell is alive, "X" if cell is dead
+            // "." if cell is dead, "X" if cell is alive
             fprintf(stream, ret_lit != lit ? "." : "X");
         }
         fprintf(stream, "\n");
