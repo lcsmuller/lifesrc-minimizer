@@ -28,6 +28,7 @@ main(int argc, char **argv)
 {
     int retval = EXIT_FAILURE;
 
+    struct golsat_field_init init = { 0 };
     struct golsat_field **fields;
     CMergeSat *s;
     FILE *f;
@@ -65,7 +66,7 @@ main(int argc, char **argv)
         cmergesat_set_learn(s, NULL, pat->height * pat->width, learnCallback));
     for (int g = 0; g <= options.evolutions; ++g) {
         // Create field for the current generation
-        fields[g] = golsat_field_create(s, pat->width, pat->height);
+        fields[g] = golsat_field_create(s, pat->width, pat->height, &init);
         if (!fields[g]) {
             fprintf(stderr,
                     "-- Error: Field creation failed for generation %d.\n", g);
@@ -90,6 +91,13 @@ main(int argc, char **argv)
     switch (cmergesat_solve(s)) {
     case 10:
         printf("\n");
+        if (!options.disable_minimize
+            && 0 == golsat_formula_minimize_true_literals(s, fields[0]))
+        {
+            fprintf(stderr, "-- Error: Minimization failed.\n");
+            goto _cleanup_sat;
+        }
+
         for (int g = 0; g <= options.evolutions; ++g) {
             if (g == 0)
                 printf("-- Initial generation:\n");
@@ -97,7 +105,8 @@ main(int argc, char **argv)
                 printf("-- Evolves to final generation (from pattern):\n");
             else
                 printf("-- Evolves to:\n");
-            golsat_field_print(s, fields[g], stdout);
+            golsat_field_print(s, g > 0 ? fields[g - 1] : NULL, fields[g],
+                               stdout);
             printf("\n");
         }
         retval = EXIT_SUCCESS;

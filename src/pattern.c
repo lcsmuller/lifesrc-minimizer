@@ -11,29 +11,23 @@ golsat_pattern_create(FILE *file)
         (struct golsat_pattern *)calloc(1, sizeof *pattern);
     if (!pattern) return NULL;
 
-    if (fscanf(file, "%d %d", &pattern->width, &pattern->height) != 2) {
+    if (fscanf(file, "%d %d", &pattern->width, &pattern->height) != 2
+        || pattern->width <= 0 || pattern->height <= 0)
+    {
         fprintf(stderr,
                 "Pattern parsing failed when reading WIDTH and HEIGHT.\n");
         return NULL;
     }
 
-    if (pattern->width <= 0 || pattern->height <= 0) {
-        fprintf(stderr,
-                "Pattern parsing failed when reading WIDTH and HEIGHT.\n");
-        return NULL;
-    }
-
-    int size = 0;
     int capacity = pattern->width * pattern->height;
     pattern->cells = (enum golsat_cellstate *)malloc(
         capacity * sizeof(enum golsat_cellstate));
     if (pattern->cells == NULL) {
-        fprintf(stderr, "Memory allocation failed\n");
         free(pattern);
         return NULL;
     }
 
-    int c;
+    int c, size = 0;
     while ((c = fgetc(file)) != EOF) {
         enum golsat_cellstate cell;
         switch (c) {
@@ -77,12 +71,6 @@ golsat_pattern_cleanup(struct golsat_pattern *pattern)
 {
     free(pattern->cells);
     free(pattern);
-}
-
-int
-golsat_pattern_is_empty(const struct golsat_pattern *pattern)
-{
-    return pattern->height == 0 || pattern->width == 0;
 }
 
 enum golsat_cellstate

@@ -4,6 +4,7 @@
 struct golsat_options {
     int evolutions;
     char *pattern;
+    int disable_minimize;
 };
 
 int golsat_commandline_parse(int argc,

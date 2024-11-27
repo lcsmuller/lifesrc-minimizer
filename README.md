@@ -23,10 +23,10 @@ The text file format used for patterns starts with two numbers specifying the `w
 The `patterns` subdirectory contains some samples.
 
 ## Example
-The following command performs backwards computation consisting of two evolution steps (option `-e 2`) that finally yield the game of life pattern specified in the file `patterns/smily.txt`:
+The following command performs backwards computation without minimizing the amount of live cells (option `-d`) consisting of two evolution steps (option `-e 2`) that finally yield the game of life pattern specified in the file `patterns/smily.txt`:
 
 ```
-$ ./gol-sat -e 2 patterns/smily.txt
+$ ./gol-sat -d -e 2 patterns/smily.txt
 -- Reading pattern from file: patterns/smily.txt
 -- Building formula for 2 evolution steps...
 -- Setting pattern constraint on last generation...
