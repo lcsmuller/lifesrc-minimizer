@@ -20,6 +20,9 @@ LDLIBS  = -lmergesat -lpthread
 
 all: $(MAIN)
 
+debug:
+	@ $(MAKE) CFLAGS="$(CFLAGS) -g -DDEBUG_MODE" LDFLAGS="$(LDFLAGS) -g" $(MAIN)
+
 $(MAIN): $(OBJS)
 
 $(OBJS): $(LIBMERGESAT)

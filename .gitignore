@@ -1,3 +1,18 @@
-.vscode
-bin
-build
+# Ignore all
+*
+# But these
+!.gitignore
+!README.md
+!LICENSE
+!Makefile
+!.gitmodules
+!licenses/
+!licenses/*
+!src/
+!src/Makefile
+!src/*.c
+!src/*.h
+!.clang-format
+!mergesat/
+!patterns/
+!patterns/*.txt
