@@ -149,19 +149,8 @@ _golsat_formula_minimize_true_literals(CMergeSat *s,
                                        const int row,
                                        const int col)
 {
-    // Base case: reached the end of matrix (SAT)
-    if (row == field->m_width) return 1;
-
-    // Base case: UNSAT
-    const int retval = cmergesat_solve(s);
-    if (retval != 10) return 0;
-
-    // Base case: current solution true_literals >= min_literals
-    //  (SAT but ignore)
-    const int current_true_literals = golsat_field_count_true_lit(s, field);
-    if (current_true_literals > *min_true_literals) return 0;
-
-    *min_true_literals = current_true_literals;
+    // Base case: reached the end of matrix
+    if (row == field->m_width) return 0;
 
     const int next_row = (col == field->m_width - 1) ? row + 1 : row,
               next_col = (col == field->m_width - 1) ? 0 : col + 1;
@@ -170,10 +159,6 @@ _golsat_formula_minimize_true_literals(CMergeSat *s,
 
     cmergesat_assume(s, -lit);
     cmergesat_freeze(s, lit);
-#if 0
-    fprintf(stderr, "1 - (%d, %d, %d) %d\n", row, col, current_true_literals,
-            -lit);
-#endif
     if (_golsat_formula_minimize_true_literals(s, field, min_true_literals,
                                                next_row, next_col))
     {
@@ -183,16 +168,22 @@ _golsat_formula_minimize_true_literals(CMergeSat *s,
 
     cmergesat_assume(s, lit);
     cmergesat_freeze(s, lit);
-#if 0
-    fprintf(stderr, "2 - (%d, %d, %d) %d\n", row, col, current_true_literals,
-            lit);
-#endif
     if (_golsat_formula_minimize_true_literals(s, field, min_true_literals,
                                                next_row, next_col))
     {
         return 1;
     }
     cmergesat_melt(s, lit);
+
+    // Base case: UNSAT
+    const int retval = cmergesat_solve(s);
+    if (retval != 10) return 0;
+    // Base case: current solution true_literals >= min_literals
+    //  (SAT but ignore)
+    const int current_true_literals = golsat_field_count_true_lit(s, field);
+    if (current_true_literals >= *min_true_literals) return 0;
+
+    *min_true_literals = current_true_literals;
 
     return 1;
 }
