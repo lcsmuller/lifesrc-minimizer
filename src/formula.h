@@ -12,7 +12,6 @@ void golsat_formula_constraint(CMergeSat *s,
                                const struct golsat_field *next,
                                const struct golsat_pattern *current_pattern);
 
-int golsat_formula_minimize_true_literals(CMergeSat *s,
-                                          struct golsat_field *field);
+int golsat_formula_minimize_alive(CMergeSat *s, struct golsat_field *field);
 
 #endif /* !GOLSAT_FORMULA_H */

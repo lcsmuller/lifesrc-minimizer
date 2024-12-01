@@ -1,4 +1,6 @@
 #include <assert.h>
+#include <string.h>
+#include <time.h>
 
 #include "field.h"
 #include "formula.h"
@@ -143,55 +145,92 @@ golsat_formula_constraint(CMergeSat *s,
 }
 
 static int
-_golsat_formula_minimize_true_literals(CMergeSat *s,
-                                       struct golsat_field *field,
-                                       int *min_true_literals,
-                                       const int row,
-                                       const int col)
+_golsat_formula_minimize_alive(CMergeSat *s,
+                               struct golsat_field *field,
+                               int *min_alive_cells,
+                               const int row,
+                               const int col,
+                               int alive_cells_count)
 {
-    // Base case: reached the end of matrix
-    if (row == field->m_width) return 0;
-
-    const int next_row = (col == field->m_width - 1) ? row + 1 : row,
-              next_col = (col == field->m_width - 1) ? 0 : col + 1;
+    // Base case: unsatisfiable
+    if (cmergesat_solve(s) != 10) {
+        return 0;
+    }
+    // Base case: cell cannot be retrieved (out of bounds)
     const int lit = golsat_field_get_lit(field, row, col);
     if (lit == field->m_false) return 0;
 
-    cmergesat_assume(s, -lit);
-    cmergesat_freeze(s, lit);
-    if (_golsat_formula_minimize_true_literals(s, field, min_true_literals,
-                                               next_row, next_col))
-    {
-        return 1;
-    }
-    cmergesat_melt(s, lit);
+    const int next_row = (col == field->m_width - 1) ? row + 1 : row,
+              next_col = (col == field->m_width - 1) ? 0 : col + 1;
 
-    cmergesat_assume(s, lit);
-    cmergesat_freeze(s, lit);
-    if (_golsat_formula_minimize_true_literals(s, field, min_true_literals,
-                                               next_row, next_col))
-    {
-        return 1;
+    // TODO add heuristic to trim the search space
+    if (alive_cells_count + (-lit > 0) < *min_alive_cells) {
+        cmergesat_assume(s, -lit);
+        cmergesat_freeze(s, lit);
+        if (_golsat_formula_minimize_alive(s, field, min_alive_cells, next_row,
+                                           next_col,
+                                           alive_cells_count + (-lit > 0)))
+            return 1;
+        cmergesat_melt(s, lit);
     }
-    cmergesat_melt(s, lit);
+    // TODO add heuristic to trim the search space
+    if (alive_cells_count + (lit > 0) < *min_alive_cells) {
+        cmergesat_assume(s, lit);
+        cmergesat_freeze(s, lit);
+        if (_golsat_formula_minimize_alive(s, field, min_alive_cells, next_row,
+                                           next_col,
+                                           alive_cells_count + (lit > 0)))
+            return 1;
+        cmergesat_melt(s, lit);
+    }
 
-    // Base case: UNSAT
-    const int retval = cmergesat_solve(s);
-    if (retval != 10) return 0;
-    // Base case: current solution true_literals >= min_literals
+    // Base case: minimized solution doesn't improve current best
     //  (SAT but ignore)
-    const int current_true_literals = golsat_field_count_true_lit(s, field);
-    if (current_true_literals >= *min_true_literals) return 0;
+    const int current_alive_cells = golsat_field_count_true_lit(s, field);
+    if (current_alive_cells >= *min_alive_cells) {
+#if 0
+        printf("-- Ignoring %d true literals (best: %d)\n",
+               current_alive_cells, *min_alive_cells);
+#endif
+        return 0;
+    }
 
-    *min_true_literals = current_true_literals;
+    *min_alive_cells = current_alive_cells;
 
     return 1;
 }
 
 int
-golsat_formula_minimize_true_literals(CMergeSat *s, struct golsat_field *field)
+golsat_formula_minimize_alive(CMergeSat *s, struct golsat_field *field)
 {
-    int min_true_literals = golsat_field_count_true_lit(s, field);
-    return _golsat_formula_minimize_true_literals(s, field, &min_true_literals,
-                                                  0, 0);
+    const int size = field->m_width * field->m_height;
+    int min_alive_cells = size; // start with worst case
+    int *best = (int *)calloc(size, sizeof(int));
+
+    double total_execution_time = 0.0;
+    int retval = 0;
+    do {
+        // save current best
+        for (int i = 0; i < size; ++i)
+            best[i] = cmergesat_val(s, i);
+
+        const clock_t start_time = clock();
+        retval = _golsat_formula_minimize_alive(s, field, &min_alive_cells, 0,
+                                                0, 0);
+        const double execution_time =
+            ((double)(clock() - start_time)) / CLOCKS_PER_SEC;
+
+        printf("-- (%s) Minimized to %d alive cells\n",
+               retval ? "CHANGE" : "NO CHANGE", min_alive_cells);
+        printf("   Execution time: %lf seconds\n", execution_time);
+
+        total_execution_time += execution_time;
+    } while (retval != 0);
+    printf("-- Total execution time: %lf seconds\n\n", total_execution_time);
+
+    // reapply current best
+    for (int i = 0; i < size; ++i)
+        cmergesat_assume(s, best[i]);
+    free(best);
+    return cmergesat_solve(s);
 }

@@ -26,7 +26,7 @@ learnCallback(void *state, int *clause)
 int
 main(int argc, char **argv)
 {
-    int retval = EXIT_FAILURE;
+    int exit_status = EXIT_FAILURE;
 
     struct golsat_field_init init = { 0 };
     struct golsat_field **fields;
@@ -88,16 +88,12 @@ main(int argc, char **argv)
     }
 
     printf("-- Solving formula...\n");
-    switch (cmergesat_solve(s)) {
+    switch (!options.disable_minimize
+                ? golsat_formula_minimize_alive(s, fields[0])
+                : cmergesat_solve(s))
+    {
     case 10:
         printf("\n");
-        if (!options.disable_minimize
-            && 0 == golsat_formula_minimize_true_literals(s, fields[0]))
-        {
-            fprintf(stderr, "-- Error: Minimization failed.\n");
-            goto _cleanup_sat;
-        }
-
         for (int g = 0; g <= options.evolutions; ++g) {
             if (g == 0)
                 printf("-- Initial generation:\n");
@@ -109,7 +105,7 @@ main(int argc, char **argv)
                                stdout);
             printf("\n");
         }
-        retval = EXIT_SUCCESS;
+        exit_status = EXIT_SUCCESS;
         break;
     case 0:
         fprintf(stderr, "-- Internal error: Solver failed.\n");
@@ -135,5 +131,5 @@ _cleanup_pat:
 _cleanup_file:
     fclose(f);
 
-    return retval;
+    return exit_status;
 }
