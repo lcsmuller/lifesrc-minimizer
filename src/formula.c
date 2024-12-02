@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <assert.h>
 #include <string.h>
 #include <time.h>
@@ -197,24 +198,99 @@ _golsat_formula_predict_alive_cells(const struct golsat_field *field,
     return predicted_alive + (int)(weight_sum * 0.2);
 }
 
-static int
+struct _golsat_tree {
+    int lit;
+    int visited;
+    struct _golsat_tree *left;
+    struct _golsat_tree *right;
+};
+
+static void
+_golsat_tree_cleanup(struct _golsat_tree *tree)
+{
+    if (tree->left) _golsat_tree_cleanup(tree->left);
+    if (tree->right) _golsat_tree_cleanup(tree->right);
+    free(tree);
+}
+
+static struct _golsat_tree *
+_golsat_tree_next(struct _golsat_tree *tree, int lit)
+{
+    if (!tree) {
+        tree = (struct _golsat_tree *)calloc(1, sizeof *tree);
+        tree->lit = lit;
+        return tree;
+    }
+
+    if (tree->lit == lit) {
+        return tree;
+    }
+
+    if (lit < 0) {
+        if (!tree->left) {
+            tree->left = (struct _golsat_tree *)calloc(1, sizeof *tree);
+            tree->left->lit = lit;
+        }
+        return tree->left;
+    }
+    else if (lit > 0) {
+        if (!tree->right) {
+            tree->right = (struct _golsat_tree *)calloc(1, sizeof *tree);
+            tree->right->lit = lit;
+        }
+        return tree->right;
+    }
+    else {
+        assert(lit != 0 && "unexpected literal (only root may be lit 0)");
+    }
+    return tree;
+}
+
+static void
+_golsat_tree_mark_visited(struct _golsat_tree *tree)
+{
+    tree->visited = 1;
+    if (tree->left) {
+        _golsat_tree_cleanup(tree->left);
+        tree->left = NULL;
+    }
+    if (tree->right) {
+        _golsat_tree_cleanup(tree->right);
+        tree->right = NULL;
+    }
+}
+
+static struct _golsat_tree *
 _golsat_formula_next_branch(const struct golsat_field *field,
                             const int row,
                             const int col,
                             const int alive_count,
                             const int lit,
-                            int *runtime_states)
+                            int *runtime_states,
+                            struct _golsat_tree *tree)
 {
-    runtime_states[row * field->width + col] = lit;
-    const int left_branch_alive_cells = _golsat_formula_predict_alive_cells(
-        field, runtime_states, alive_count + (lit > 0));
+    struct _golsat_tree *lbranch = _golsat_tree_next(tree, -lit),
+                        *rbranch = _golsat_tree_next(tree, lit);
 
-    runtime_states[row * field->width + col] = -lit;
-    const int right_branch_alive_cells = _golsat_formula_predict_alive_cells(
-        field, runtime_states, alive_count + (-lit > 0));
+    if (lbranch->visited && rbranch->visited) {
+        assert(tree->lit == 0 && "expected root");
+        return NULL;
+    }
+
+    if (lbranch->visited) return rbranch;
+    if (rbranch->visited) return lbranch;
+
+    runtime_states[row * field->width + col] = lbranch->lit;
+    const int left_branch_alive_cells = _golsat_formula_predict_alive_cells(
+        field, runtime_states, alive_count + (lbranch->lit > 0));
     runtime_states[row * field->width + col] = 0;
 
-    return left_branch_alive_cells <= right_branch_alive_cells ? lit : -lit;
+    runtime_states[row * field->width + col] = rbranch->lit;
+    const int right_branch_alive_cells = _golsat_formula_predict_alive_cells(
+        field, runtime_states, alive_count + (rbranch->lit > 0));
+
+    return (left_branch_alive_cells <= right_branch_alive_cells) ? lbranch
+                                                                 : rbranch;
 }
 
 static int
@@ -224,7 +300,8 @@ _golsat_formula_minimize_alive(CMergeSat *s,
                                const int col,
                                int *min_alive_cells,
                                int alive_count,
-                               int *runtime_states)
+                               int *runtime_states,
+                               struct _golsat_tree *tree)
 {
     // Base case: unsatisfiable
     if (cmergesat_solve(s) != 10) return 0;
@@ -234,22 +311,25 @@ _golsat_formula_minimize_alive(CMergeSat *s,
     if (lit == field->is_false) return 0;
 
     // Try to get the best solution with this literal being dead or alive
-    const int assumed_lit = _golsat_formula_next_branch(
-        field, row, col, alive_count, lit, runtime_states);
+    struct _golsat_tree *next_branch = _golsat_formula_next_branch(
+        field, row, col, alive_count, lit, runtime_states, tree);
+    if (next_branch == NULL) return 0;
+
     const int next_row = (col == field->width - 1) ? row + 1 : row,
               next_col = (col == field->width - 1) ? 0 : col + 1;
 
-    cmergesat_assume(s, assumed_lit);
-    cmergesat_freeze(s, lit);
-    runtime_states[row * field->width + col] = assumed_lit;
+    cmergesat_assume(s, next_branch->lit);
+    cmergesat_freeze(s, next_branch->lit);
+    runtime_states[row * field->width + col] = next_branch->lit;
     if (_golsat_formula_minimize_alive(
             s, field, next_row, next_col, min_alive_cells,
-            alive_count + (assumed_lit > 0), runtime_states))
+            alive_count + (next_branch->lit > 0), runtime_states, next_branch))
     {
+        _golsat_tree_mark_visited(next_branch);
         return 1;
     }
     runtime_states[row * field->width + col] = 0;
-    cmergesat_melt(s, lit);
+    cmergesat_melt(s, next_branch->lit);
 
     // Base case: minimized solution doesn't improve current best
     //  (SAT but ignore)
@@ -281,26 +361,21 @@ golsat_formula_minimize_alive(CMergeSat *s, struct golsat_field *field)
 
     int min_alive_cells = golsat_field_count_true_lit(s, field);
     int best_min_alive = min_alive_cells;
-    int consecutive_no_improve = 0;
-    const int max_consecutive_no_improve = field->width * field->height;
-    const int max_total_attempts = field->width * field->height * 4;
-    int total_attempts = 0;
-    int should_continue = 1;
     const double max_execution_time = 240.0; // 4 minutes in seconds
-    double total_execution_time = 0.0;
+    double total_execution_time = 0.0, last_execution_time = 0;
 
     for (int i = 0; i < size; ++i)
         best_states[i] = cmergesat_val(s, i);
 
+    struct _golsat_tree *root = _golsat_tree_next(NULL, 0);
     do {
         const clock_t start_time = clock();
         retval = _golsat_formula_minimize_alive(
-            s, field, 0, 0, &min_alive_cells, 0, runtime_states);
+            s, field, 0, 0, &min_alive_cells, 0, runtime_states, root);
         const double execution_time =
             ((double)(clock() - start_time)) / CLOCKS_PER_SEC;
 
         total_execution_time += execution_time;
-        total_attempts++;
 
         // Check if we hit the time limit
         if (total_execution_time >= max_execution_time) {
@@ -312,10 +387,6 @@ golsat_formula_minimize_alive(CMergeSat *s, struct golsat_field *field)
         // Check if we got a better solution
         if (min_alive_cells < best_min_alive) {
             best_min_alive = min_alive_cells;
-            consecutive_no_improve = 0;
-        }
-        else {
-            consecutive_no_improve++;
         }
 
         const char *status;
@@ -323,20 +394,15 @@ golsat_formula_minimize_alive(CMergeSat *s, struct golsat_field *field)
             status = "CHANGE";
             for (int i = 0; i < size; ++i)
                 best_states[i] = cmergesat_val(s, i);
-            should_continue = 1;
+            printf("-- (%s) Minimized to %d alive cells\n", status,
+                   min_alive_cells);
+            printf("   Execution time: %lf seconds\n",
+                   total_execution_time - last_execution_time);
         }
         else {
-            should_continue =
-                (consecutive_no_improve < max_consecutive_no_improve
-                 && total_attempts < max_total_attempts);
-            status = should_continue ? "CONTINUE" : "STOP";
+            status = "CONTINUE";
         }
-
-        printf("-- (%s) Minimized to %d alive cells (attempt %d)\n", status,
-               min_alive_cells, total_attempts);
-        printf("   Execution time: %lf seconds\n", execution_time);
-
-    } while (should_continue);
+    } while (root->left->visited != 1 && root->right->visited != 1);
 
     printf("-- Total execution time: %lf seconds\n", total_execution_time);
     printf("-- Best solution found: %d alive cells\n\n", best_min_alive);
@@ -347,6 +413,7 @@ golsat_formula_minimize_alive(CMergeSat *s, struct golsat_field *field)
 
     free(best_states);
     free(runtime_states);
+    _golsat_tree_cleanup(root);
 
     return cmergesat_solve(s);
 }
