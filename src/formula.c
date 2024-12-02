@@ -254,9 +254,7 @@ _golsat_formula_minimize_alive(CMergeSat *s,
     // Base case: minimized solution doesn't improve current best
     //  (SAT but ignore)
     const int current_alive_cells = golsat_field_count_true_lit(s, field);
-    if (current_alive_cells >= *min_alive_cells) {
-        return 0;
-    }
+    if (current_alive_cells >= *min_alive_cells) return 0;
 
     *min_alive_cells = current_alive_cells;
 
@@ -267,40 +265,83 @@ int
 golsat_formula_minimize_alive(CMergeSat *s, struct golsat_field *field)
 {
     const int size = field->width * field->height;
-    int min_alive_cells = size;
-    int *best_states = (int *)calloc(size, sizeof(int)),
+    int *best_states = (int *)malloc(size * sizeof(int)),
         *runtime_states = (int *)calloc(size, sizeof(int));
-
-    if (!best_states) {
-        return 0;
-    }
-    if (!runtime_states) {
-        free(best_states);
-        return 0;
-    }
-
-    double total_execution_time = 0.0;
     int retval;
-    do {
-        // save current best
-        for (int i = 0; i < size; ++i)
-            best_states[i] = cmergesat_val(s, i);
 
+    if (!best_states || !runtime_states) {
+        free(best_states);
+        free(runtime_states);
+        return 0;
+    }
+    if ((retval = cmergesat_solve(s)) != 10) {
+        printf("ERROR: initial formula is unsatisfiable (%d)\n", retval);
+        return retval;
+    }
+
+    int min_alive_cells = golsat_field_count_true_lit(s, field);
+    int best_min_alive = min_alive_cells;
+    int consecutive_no_improve = 0;
+    const int max_consecutive_no_improve = field->width * field->height;
+    const int max_total_attempts = field->width * field->height * 4;
+    int total_attempts = 0;
+    int should_continue = 1;
+    const double max_execution_time = 240.0; // 4 minutes in seconds
+    double total_execution_time = 0.0;
+
+    for (int i = 0; i < size; ++i)
+        best_states[i] = cmergesat_val(s, i);
+
+    do {
         const clock_t start_time = clock();
         retval = _golsat_formula_minimize_alive(
             s, field, 0, 0, &min_alive_cells, 0, runtime_states);
         const double execution_time =
             ((double)(clock() - start_time)) / CLOCKS_PER_SEC;
 
-        printf("-- (%s) Minimized to %d alive cells\n",
-               retval ? "CHANGE" : "NO CHANGE", min_alive_cells);
+        total_execution_time += execution_time;
+        total_attempts++;
+
+        // Check if we hit the time limit
+        if (total_execution_time >= max_execution_time) {
+            printf("-- Time limit reached (%.2f seconds)\n",
+                   total_execution_time);
+            break;
+        }
+
+        // Check if we got a better solution
+        if (min_alive_cells < best_min_alive) {
+            best_min_alive = min_alive_cells;
+            consecutive_no_improve = 0;
+        }
+        else {
+            consecutive_no_improve++;
+        }
+
+        const char *status;
+        if (retval == 1) {
+            status = "CHANGE";
+            for (int i = 0; i < size; ++i)
+                best_states[i] = cmergesat_val(s, i);
+            should_continue = 1;
+        }
+        else {
+            should_continue =
+                (consecutive_no_improve < max_consecutive_no_improve
+                 && total_attempts < max_total_attempts);
+            status = should_continue ? "CONTINUE" : "STOP";
+        }
+
+        printf("-- (%s) Minimized to %d alive cells (attempt %d)\n", status,
+               min_alive_cells, total_attempts);
         printf("   Execution time: %lf seconds\n", execution_time);
 
-        total_execution_time += execution_time;
-    } while (retval != 0);
-    printf("-- Total execution time: %lf seconds\n\n", total_execution_time);
+    } while (should_continue);
 
-    // reapply current best
+    printf("-- Total execution time: %lf seconds\n", total_execution_time);
+    printf("-- Best solution found: %d alive cells\n\n", best_min_alive);
+
+    // Reapply best solution found
     for (int i = 0; i < size; ++i)
         cmergesat_assume(s, best_states[i]);
 
