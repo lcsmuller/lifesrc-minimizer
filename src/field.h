@@ -6,10 +6,10 @@
 #include <simp/cmergesat.h>
 
 struct golsat_field {
-    int m_width;
-    int m_height;
-    int m_false;
-    int *m_literals;
+    int width;
+    int height;
+    int is_false;
+    int *literals;
 };
 
 struct golsat_field_init {

@@ -93,14 +93,14 @@ golsat_formula_transition(CMergeSat *s,
                           const struct golsat_field *current,
                           const struct golsat_field *next)
 {
-    assert(current->m_width == next->m_width
-           && "incompatible or unsupported field sizes");
-    assert(current->m_height == next->m_height
-           && "incompatible or unsupported field sizes");
+    assert(current->width == next->width
+           && "incompatible or unsupported field width sizes");
+    assert(current->height == next->height
+           && "incompatible or unsupported field height sizes");
 
     int neighbours[MAX_NEIGHBOURS_SIZE];
-    for (int x = -1; x <= current->m_width; ++x) {
-        for (int y = -1; y <= current->m_height; ++y) {
+    for (int x = -1; x <= current->width; ++x) {
+        for (int y = -1; y <= current->height; ++y) {
             size_t sz = 0;
             for (int dx = -1; dx <= +1; ++dx) {
                 for (int dy = -1; dy <= +1; ++dy) {
@@ -122,11 +122,13 @@ golsat_formula_constraint(CMergeSat *s,
                           const struct golsat_field *next,
                           const struct golsat_pattern *current_pattern)
 {
-    assert(next->m_width == current_pattern->width && "incompatible sizes");
-    assert(next->m_height == current_pattern->height && "incompatible sizes");
+    assert(next->width == current_pattern->width
+           && "incompatible width sizes");
+    assert(next->height == current_pattern->height
+           && "incompatible height sizes");
 
-    for (int x = 0; x < next->m_width; ++x) {
-        for (int y = 0; y < next->m_height; ++y) {
+    for (int x = 0; x < next->width; ++x) {
+        for (int y = 0; y < next->height; ++y) {
             switch (golsat_pattern_get_cell(current_pattern, x, y)) {
             case GOLSAT_CELLSTATE_ALIVE:
                 cmergesat_add(s, golsat_field_get_lit(next, x, y));
@@ -145,53 +147,114 @@ golsat_formula_constraint(CMergeSat *s,
 }
 
 static int
+_golsat_formula_predict_alive_cells(const struct golsat_field *field,
+                                    const int *runtime_states,
+                                    int current_alive)
+{
+    int predicted_alive = current_alive;
+    double weight_sum = 0.0;
+
+    for (int i = 0; i < field->width; ++i) {
+        for (int j = 0; j < field->height; ++j) {
+            if (runtime_states[i + j * field->width] != 0) continue;
+
+            int fixed_alive = 0, undefined = 0;
+            double alive_probability = 0.0;
+
+            // Check 3x3 neighborhood
+            for (int dx = -1; dx <= 1; ++dx) {
+                for (int dy = -1; dy <= 1; ++dy) {
+                    if (dx == 0 && dy == 0) continue;
+
+                    const int x = i + dx, y = j + dy;
+                    if (x < 0 || x >= field->width || y < 0
+                        || y >= field->height)
+                        continue;
+
+                    const int state = runtime_states[x + y * field->width];
+                    if (state > 0)
+                        fixed_alive++;
+                    else if (state == 0)
+                        undefined++;
+                }
+            }
+
+            // Calculate probability based on Game of Life rules
+            if (fixed_alive >= 4)
+                alive_probability = 0.0;
+            else if (fixed_alive == 3)
+                alive_probability = 1.0;
+            else if (fixed_alive == 2)
+                alive_probability = 0.5;
+            else if (undefined > 0)
+                alive_probability = fixed_alive / 8.0;
+
+            predicted_alive += alive_probability;
+            weight_sum += 1.0;
+        }
+    }
+
+    return predicted_alive + (int)(weight_sum * 0.2);
+}
+
+static int
+_golsat_formula_next_branch(const struct golsat_field *field,
+                            const int row,
+                            const int col,
+                            const int alive_count,
+                            const int lit,
+                            int *runtime_states)
+{
+    runtime_states[row * field->width + col] = lit;
+    const int left_branch_alive_cells = _golsat_formula_predict_alive_cells(
+        field, runtime_states, alive_count + (lit > 0));
+
+    runtime_states[row * field->width + col] = -lit;
+    const int right_branch_alive_cells = _golsat_formula_predict_alive_cells(
+        field, runtime_states, alive_count + (-lit > 0));
+    runtime_states[row * field->width + col] = 0;
+
+    return left_branch_alive_cells <= right_branch_alive_cells ? lit : -lit;
+}
+
+static int
 _golsat_formula_minimize_alive(CMergeSat *s,
                                struct golsat_field *field,
-                               int *min_alive_cells,
                                const int row,
                                const int col,
-                               int alive_cells_count)
+                               int *min_alive_cells,
+                               int alive_count,
+                               int *runtime_states)
 {
     // Base case: unsatisfiable
-    if (cmergesat_solve(s) != 10) {
-        return 0;
-    }
+    if (cmergesat_solve(s) != 10) return 0;
+
     // Base case: cell cannot be retrieved (out of bounds)
     const int lit = golsat_field_get_lit(field, row, col);
-    if (lit == field->m_false) return 0;
+    if (lit == field->is_false) return 0;
 
-    const int next_row = (col == field->m_width - 1) ? row + 1 : row,
-              next_col = (col == field->m_width - 1) ? 0 : col + 1;
+    // Try to get the best solution with this literal being dead or alive
+    const int assumed_lit = _golsat_formula_next_branch(
+        field, row, col, alive_count, lit, runtime_states);
+    const int next_row = (col == field->width - 1) ? row + 1 : row,
+              next_col = (col == field->width - 1) ? 0 : col + 1;
 
-    // TODO add heuristic to trim the search space
-    if (alive_cells_count + (-lit > 0) < *min_alive_cells) {
-        cmergesat_assume(s, -lit);
-        cmergesat_freeze(s, lit);
-        if (_golsat_formula_minimize_alive(s, field, min_alive_cells, next_row,
-                                           next_col,
-                                           alive_cells_count + (-lit > 0)))
-            return 1;
-        cmergesat_melt(s, lit);
+    cmergesat_assume(s, assumed_lit);
+    cmergesat_freeze(s, lit);
+    runtime_states[row * field->width + col] = assumed_lit;
+    if (_golsat_formula_minimize_alive(
+            s, field, next_row, next_col, min_alive_cells,
+            alive_count + (assumed_lit > 0), runtime_states))
+    {
+        return 1;
     }
-    // TODO add heuristic to trim the search space
-    if (alive_cells_count + (lit > 0) < *min_alive_cells) {
-        cmergesat_assume(s, lit);
-        cmergesat_freeze(s, lit);
-        if (_golsat_formula_minimize_alive(s, field, min_alive_cells, next_row,
-                                           next_col,
-                                           alive_cells_count + (lit > 0)))
-            return 1;
-        cmergesat_melt(s, lit);
-    }
+    runtime_states[row * field->width + col] = 0;
+    cmergesat_melt(s, lit);
 
     // Base case: minimized solution doesn't improve current best
     //  (SAT but ignore)
     const int current_alive_cells = golsat_field_count_true_lit(s, field);
     if (current_alive_cells >= *min_alive_cells) {
-#if 0
-        printf("-- Ignoring %d true literals (best: %d)\n",
-               current_alive_cells, *min_alive_cells);
-#endif
         return 0;
     }
 
@@ -203,20 +266,29 @@ _golsat_formula_minimize_alive(CMergeSat *s,
 int
 golsat_formula_minimize_alive(CMergeSat *s, struct golsat_field *field)
 {
-    const int size = field->m_width * field->m_height;
-    int min_alive_cells = size; // start with worst case
-    int *best = (int *)calloc(size, sizeof(int));
+    const int size = field->width * field->height;
+    int min_alive_cells = size;
+    int *best_states = (int *)calloc(size, sizeof(int)),
+        *runtime_states = (int *)calloc(size, sizeof(int));
+
+    if (!best_states) {
+        return 0;
+    }
+    if (!runtime_states) {
+        free(best_states);
+        return 0;
+    }
 
     double total_execution_time = 0.0;
-    int retval = 0;
+    int retval;
     do {
         // save current best
         for (int i = 0; i < size; ++i)
-            best[i] = cmergesat_val(s, i);
+            best_states[i] = cmergesat_val(s, i);
 
         const clock_t start_time = clock();
-        retval = _golsat_formula_minimize_alive(s, field, &min_alive_cells, 0,
-                                                0, 0);
+        retval = _golsat_formula_minimize_alive(
+            s, field, 0, 0, &min_alive_cells, 0, runtime_states);
         const double execution_time =
             ((double)(clock() - start_time)) / CLOCKS_PER_SEC;
 
@@ -230,7 +302,10 @@ golsat_formula_minimize_alive(CMergeSat *s, struct golsat_field *field)
 
     // reapply current best
     for (int i = 0; i < size; ++i)
-        cmergesat_assume(s, best[i]);
-    free(best);
+        cmergesat_assume(s, best_states[i]);
+
+    free(best_states);
+    free(runtime_states);
+
     return cmergesat_solve(s);
 }
