@@ -1,6 +1,6 @@
-# GoL-SAT
+# GoL-SAT Backwards Solver
 
-A SAT-based forward/backwards solver for Conway's "Game of Life".
+A SAT-based backwards solver for Conway's "Game of Life" that minimizes live cells.
 
 ## Compile
 
@@ -11,7 +11,7 @@ A SAT-based forward/backwards solver for Conway's "Game of Life".
 
 ## Usage
 
-Run `$ ./gol-sat -e X pattern.txt` to perform a *backwards computation* consisting of `X` steps an finally yields the pattern specified in the file `pattern.txt`.
+Run `$ ./gol-sat -e X pattern.txt` to perform a *backwards computation* consisting of `X` steps that finally yields the pattern specified in the file `pattern.txt`. The solver will attempt to minimize the number of live cells unless disabled with `-d`.
 
 ## Pattern Format
 The text file format used for patterns starts with two numbers specifying the `width` and `height` of the pattern. Then `width` * `height` cell characters follow, where
