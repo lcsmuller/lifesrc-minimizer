@@ -1,0 +1,9 @@
+# Ignore all
+*
+# Except these
+!.gitignore
+!*.c
+!*.h
+!Makefile
+!ORIGIN
+!README

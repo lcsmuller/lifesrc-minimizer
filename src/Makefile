@@ -1,15 +1,8 @@
-TOP = ..
-CC  = g++
+CC = cc
 
-OBJS = commandline.o \
-       field.o       \
-       formula.o     \
-       pattern.o
+OBJS = commandline.o pattern.o popen2.o
 
-MERGESAT_DIR         = $(TOP)/mergesat
-MERGESAT_INCLUDE_DIR = $(MERGESAT_DIR)/minisat
-
-CFLAGS = -std=c++98 -I. -I$(MERGESAT_INCLUDE_DIR)
+CFLAGS = -std=c89 -I. -Wall -Wextra -Wpedantic
 
 all: $(OBJS)
 

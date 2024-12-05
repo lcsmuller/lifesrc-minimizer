@@ -1,26 +1,99 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <assert.h>
+#include <limits.h>
+
+#include <sys/wait.h>
+#include <errno.h>
 
 #include "commandline.h"
-#include "field.h"
-#include "formula.h"
 #include "pattern.h"
+#include "popen2.h"
 
-#ifdef DEBUG_MODE
-#define DEBUG_CALL(func) func
-#else
-#define DEBUG_CALL(func)
-#endif // DEBUG_MODE
+#define LIFESRC_START_SEARCH " \n"
+#define LIFESRC_QUIT         "q\ny\n"
+#define LIFESRC_EXEC         LIFESRC_START_SEARCH LIFESRC_QUIT
+#define LIFESRC_EXEC_LEN     (sizeof(LIFESRC_EXEC) - 1)
 
-void
-learnCallback(void *state, int *clause)
+#define TMPFILE_NAME "tmp.txt"
+
+struct _golsat_next {
+    char *last_state;
+    int live_cells;
+};
+
+static struct _golsat_next
+_golsat_next_search(const char command[1024])
 {
-    (void)state;
-    fprintf(stderr, "Learned clause: ");
-    while (*clause) {
-        fprintf(stderr, "%d ", *clause++);
+    struct popen2 exec = { 0 };
+    ssize_t bytes_read;
+    int exec_status;
+
+    char output[2048] = { 0 };
+    struct _golsat_next result = { NULL, 0 };
+
+    if (popen2(command, &exec) != 0) {
+        perror("popen2");
+        return result;
     }
-    fprintf(stderr, "\n");
+
+    write(exec.to_child, LIFESRC_EXEC, LIFESRC_EXEC_LEN);
+    close(exec.to_child);
+
+    while ((bytes_read = read(exec.from_child, output, sizeof(output) - 1))
+           > 0) {
+        output[bytes_read] = '\0';
+
+        if ((sscanf(output, "Found object (gen %*d, cells %d",
+                    &result.live_cells))) {
+            const size_t start_idx = strcspn(output, "\n") + 1,
+                         end_idx = strcspn(output + start_idx, ">");
+            result.last_state =
+                strndup(output + start_idx, end_idx - start_idx);
+            if (!result.last_state) perror("strndup");
+            break;
+        }
+        else if (!strncmp(output, "No such object",
+                          sizeof("No such object") - 1)) {
+            break;
+        }
+    }
+    waitpid(exec.child_pid, &exec_status, 0);
+    assert(WIFEXITED(exec_status) != 0 && "lifesrc terminated abnormally");
+
+    return result;
+}
+
+static int
+_golsat_convert_cnv_to_lifesrc_format(const struct golsat_pattern *pat)
+{
+    FILE *f_tmp;
+    int y, x;
+
+    if (!(f_tmp = fopen(TMPFILE_NAME, "wb"))) {
+        perror("-- Error: tmpfile failed");
+        return 0;
+    }
+
+    for (y = 0; y < pat->height; y++) {
+        for (x = 0; x < pat->width; x++) {
+            switch (golsat_pattern_get_cell(pat, x, y)) {
+            case GOLSAT_CELLSTATE_ALIVE:
+                fputc('O', f_tmp);
+                break;
+            case GOLSAT_CELLSTATE_DEAD:
+                fputc('.', f_tmp);
+                break;
+            case GOLSAT_CELLSTATE_UNKNOWN:
+                fputc('?', f_tmp);
+                break;
+            }
+        }
+        fputc('\n', f_tmp);
+    }
+    fclose(f_tmp);
+    return 1;
 }
 
 int
@@ -28,108 +101,71 @@ main(int argc, char **argv)
 {
     int exit_status = EXIT_FAILURE;
 
-    struct golsat_field_init init = { 0 };
-    struct golsat_field **fields;
-    CMergeSat *s;
-    FILE *f;
-
     struct golsat_options options = { 0 };
+    struct golsat_pattern *pat = NULL;
+    struct _golsat_next next;
+
+    char command[1024];
+    FILE *f_pattern;
+
+    int low = 0, high = INT_MAX, mid, best_value;
+    char *current_best = NULL;
 
     if (!golsat_commandline_parse(argc, argv, &options)) {
         return EXIT_FAILURE;
     }
 
     printf("-- Reading pattern from file: %s\n", options.pattern);
-    f = fopen(options.pattern, "r");
-    if (!f) {
-        printf("-- Error: Cannot open %s\n", options.pattern);
+    if (!(f_pattern = fopen(options.pattern, "r"))) {
+        fprintf(stderr, "-- Error: Cannot open %s\n", options.pattern);
         return EXIT_FAILURE;
     }
 
-    struct golsat_pattern *pat = golsat_pattern_create(f);
-    if (!pat) {
+    if (!(pat = golsat_pattern_create(f_pattern))) {
         fprintf(stderr, "-- Error: Pattern creation failed.\n");
         goto _cleanup_file;
     }
 
-    printf("-- Building formula for %d evolution steps...\n",
-           options.evolutions);
-    fields = (struct golsat_field **)malloc(sizeof(struct golsat_field *)
-                                            * (options.evolutions + 1));
-    s = cmergesat_init();
-    if (!fields) {
-        fprintf(stderr, "-- Error: Memory allocation for fields failed.\n");
+    if (!_golsat_convert_cnv_to_lifesrc_format(pat)) {
+        fprintf(stderr, "-- Error: Conversion to lifesrc format failed.\n");
         goto _cleanup_pat;
     }
 
-    DEBUG_CALL(
-        cmergesat_set_learn(s, NULL, pat->height * pat->width, learnCallback));
-    for (int g = 0; g <= options.evolutions; ++g) {
-        // Create field for the current generation
-        fields[g] = golsat_field_create(s, pat->width, pat->height, &init);
-        if (!fields[g]) {
-            fprintf(stderr,
-                    "-- Error: Field creation failed for generation %d.\n", g);
-            goto _cleanup_sat;
+    while (low <= high) {
+        mid = (low + high) / 2;
+        sprintf(command, "./lifesrc -r%d -c%d -g%d -f -p -mt%d -i %s",
+                pat->height, pat->width, options.evolutions + 1, mid,
+                TMPFILE_NAME);
+
+        printf("-- Searching for mt value: %d\n", mid);
+        if ((next = _golsat_next_search(command)), next.last_state != NULL) {
+            printf("\t-- Found solution for mt value: %d\n", next.live_cells);
+            if (current_best) free(current_best);
+            current_best = next.last_state;
+            best_value = next.live_cells;
+            high = next.live_cells - 1;
         }
-
-        // Add transitions between generations
-        if (g > 0) {
-            golsat_formula_transition(s, fields[g - 1], fields[g]);
+        else {
+            printf("\t-- No solution for mt value: %d\n", mid);
+            low = mid + 1;
         }
     }
 
-    printf("-- Setting pattern constraint on last generation...\n");
-    golsat_formula_constraint(s, fields[options.evolutions], pat);
-
-    if (cmergesat_simplify(s) == 20) {
-        printf("-- Error: Formula is unsatisfiable. Cannot be simplified.\n");
-        goto _cleanup_sat;
+    if (!current_best) {
+        fprintf(stderr, "-- Error: No SAT solution found\n");
+        goto _cleanup_pat;
     }
 
-    printf("-- Solving formula...\n");
-    switch (!options.disable_minimize
-                ? golsat_formula_minimize_alive(s, fields[0])
-                : cmergesat_solve(s))
-    {
-    case 10:
-        printf("\n");
-        for (int g = 0; g <= options.evolutions; ++g) {
-            if (g == 0)
-                printf("-- Initial generation:\n");
-            else if (g == options.evolutions)
-                printf("-- Evolves to final generation (from pattern):\n");
-            else
-                printf("-- Evolves to:\n");
-            golsat_field_print(s, g > 0 ? fields[g - 1] : NULL, fields[g],
-                               stdout);
-            printf("\n");
-        }
-        exit_status = EXIT_SUCCESS;
-        break;
-    case 0:
-        fprintf(stderr, "-- Internal error: Solver failed.\n");
-        break;
-    case 20:
-    default:
-        fprintf(stderr,
-                "-- Formula is not solvable. The selected pattern is probably "
-                "too restrictive!\n");
-        break;
-    }
-    printf("-- Formula statistics:\n");
-    cmergesat_print_statistics(s);
+    /* the minimum value that produces a SAT solution */
+    printf("-- Minimum mt value for SAT solution: %d\n%d %d\n%s", best_value,
+           pat->width, pat->height, current_best);
+    exit_status = EXIT_SUCCESS;
 
-_cleanup_sat:
-    for (int g = 0; g <= options.evolutions; ++g) {
-        golsat_field_cleanup(fields[g]);
-    }
-    free(fields);
-    cmergesat_release(s);
 _cleanup_pat:
+    if (current_best) free(current_best);
     golsat_pattern_cleanup(pat);
 _cleanup_file:
-    fclose(f);
+    fclose(f_pattern);
 
     return exit_status;
 }

@@ -1,42 +1,38 @@
-CC = g++
+CC = cc
 
-SRC_DIR              = src
-MERGESAT_DIR         = mergesat
-MERGESAT_BUILD_DIR   = $(MERGESAT_DIR)/build/release
-MERGESAT_LIB_DIR     = $(MERGESAT_BUILD_DIR)/lib
-MERGESAT_INCLUDE_DIR = $(MERGESAT_DIR)/minisat
+SRC_DIR             = src
+LIFESRC_VERSION     = 3.8
+LIFESRC_DIR         = lifesrc-$(LIFESRC_VERSION)
+LIFESRC_INCLUDE_DIR = $(LIFESRC_DIR)
 
-LIBMERGESAT          = $(MERGESAT_LIB_DIR)/libmergesat.a
+OBJS       = $(SRC_DIR)/commandline.o \
+             $(SRC_DIR)/pattern.o     \
+             $(SRC_DIR)/popen2.o
+LIFESRC    = lifesrc
+MAIN       = gol-sat
 
-OBJS    = $(SRC_DIR)/commandline.o \
-		  $(SRC_DIR)/field.o       \
-		  $(SRC_DIR)/formula.o     \
-		  $(SRC_DIR)/pattern.o
-MAIN    = gol-sat
-
-CFLAGS  = -std=c++98 -I$(SRC_DIR) -I$(MERGESAT_INCLUDE_DIR)
-LDFLAGS = -L$(MERGESAT_LIB_DIR)
-LDLIBS  = -lmergesat -lpthread
+CFLAGS  = -std=c89 -D_POSIX_C_SOURCE=200809L -I$(SRC_DIR) \
+          -I$(LIFESRC_INCLUDE_DIR) -Wall -Wextra -Wpedantic
 
 all: $(MAIN)
 
 debug:
-	@ $(MAKE) CFLAGS="$(CFLAGS) -g -DDEBUG_MODE" LDFLAGS="$(LDFLAGS) -g" $(MAIN)
+	@ $(MAKE) CFLAGS="$(CFLAGS) -g -DDEBUG_MODE" $(MAIN)
 
 $(MAIN): $(OBJS)
 
-$(OBJS): $(LIBMERGESAT)
+$(OBJS): $(LIFESRC)
 
-$(LIBMERGESAT):
-	@ echo "Initializing mergesat submodule..."
-	git submodule update --init --recursive
-	@ $(MAKE) -C $(MERGESAT_DIR)
+$(LIFESRC):
+	@ echo "Building lifesrc library..."
+	@ $(MAKE) -C $(LIFESRC_DIR) lifesrcdumb
+	@ cp $(LIFESRC_DIR)/lifesrcdumb ./$(LIFESRC)
 
 clean:
 	@ $(MAKE) -C $(SRC_DIR) $@
-	@ rm -f $(MAIN)
+	@ rm -f $(MAIN) $(LIFESRC)
 
 purge: clean
-	git submodule deinit -f $(MERGESAT_DIR)
+	$(MAKE) -C $(LIFESRC_DIR) clean
 
 .PHONY: all clean purge

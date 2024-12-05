@@ -1,9 +1,6 @@
 #ifndef GOLSAT_PATTERN_H
 #define GOLSAT_PATTERN_H
 
-#include <stdio.h>
-#include <stdlib.h>
-
 enum golsat_cellstate {
     GOLSAT_CELLSTATE_ALIVE,
     GOLSAT_CELLSTATE_DEAD,

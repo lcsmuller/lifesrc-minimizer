@@ -5,14 +5,12 @@
 !README.md
 !LICENSE
 !Makefile
-!.gitmodules
-!licenses/
-!licenses/*
 !src/
 !src/Makefile
 !src/*.c
 !src/*.h
 !.clang-format
-!mergesat/
 !patterns/
 !patterns/*.txt
+!lifesrc-3.8
+!lifesrc-3.8/*
