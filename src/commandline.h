@@ -2,9 +2,9 @@
 #define GOLSAT_COMMANDLINE_H
 
 struct golsat_options {
-    int evolutions;
     char *pattern;
-    int disable_minimize;
+    int minimize_disable;
+    int border_disable;
 };
 
 int golsat_commandline_parse(int argc,

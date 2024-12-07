@@ -34,14 +34,11 @@ struct _golsat_timeout {
 
 static int
 _golsat_next_timeout(const struct golsat_pattern *pat,
-                     int evolutions,
                      struct _golsat_timeout *timer)
 {
     const int total_cells = pat->width * pat->height,
-              max_iterations = (int)(log2(total_cells) + 1),
-              base_timeout = (timer->remaining_total / max_iterations)
-                             + timer->unused_time;
-    return base_timeout * (1 + (evolutions / 10));
+              max_iterations = (int)(log2(total_cells) + 1);
+    return (timer->remaining_total / max_iterations) + timer->unused_time;
 }
 
 static struct _golsat_next
@@ -109,6 +106,9 @@ _golsat_convert_cnv_to_lifesrc_format(const struct golsat_pattern *pat)
             case GOLSAT_CELLSTATE_DEAD:
                 fputc('.', f_tmp);
                 break;
+            case GOLSAT_CELLSTATE_FIXED_DEAD:
+                fputc(':', f_tmp);
+                break;
             case GOLSAT_CELLSTATE_UNKNOWN:
                 fputc('?', f_tmp);
                 break;
@@ -152,7 +152,7 @@ main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    if (!(pat = golsat_pattern_create(f_pattern))) {
+    if (!(pat = golsat_pattern_create(f_pattern, options.border_disable))) {
         fprintf(stderr, "-- Error: Pattern creation failed.\n");
         goto _cleanup_file;
     }
@@ -164,16 +164,14 @@ main(int argc, char **argv)
     }
 
     while (low <= high) {
-        const int timeout =
-            _golsat_next_timeout(pat, options.evolutions, &timer);
+        const int timeout = _golsat_next_timeout(pat, &timer);
 
         mid = (low + high) / 2;
 
         sprintf(command,
-                "timeout %d ./lifesrc -r%d -c%d -g%d -a -p -mt%d -i %s"
+                "timeout %d ./lifesrc -r%d -c%d -g2 -a -p -mt%d -i %s"
                 " || echo 'Timeout'",
-                timeout, pat->height, pat->width, options.evolutions + 1, mid,
-                TMPFILE_NAME);
+                timeout, pat->height, pat->width, mid, TMPFILE_NAME);
 
         printf("-- Searching for mt value: %d\t| Timeout: %d seconds\n", mid,
                timeout);
@@ -203,6 +201,8 @@ main(int argc, char **argv)
                    next.live_cells == -1 ? "Timeout" : "No solution", mid);
             low = mid + 1;
         }
+
+        if (options.minimize_disable) break;
     }
 
     if (!current_best) {
