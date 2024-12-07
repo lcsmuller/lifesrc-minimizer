@@ -2,7 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include <limits.h>
+#include <time.h>
+#include <math.h>
 
 #include <sys/wait.h>
 #include <errno.h>
@@ -18,10 +19,30 @@
 
 #define TMPFILE_NAME "tmp.txt"
 
+#define MAX_TOTAL_TIME_SECS 8 * 60
+
 struct _golsat_next {
     char *last_state;
     int live_cells;
 };
+
+struct _golsat_timeout {
+    time_t start_time;
+    int remaining_total;
+    int unused_time;
+};
+
+static int
+_golsat_next_timeout(const struct golsat_pattern *pat,
+                     int evolutions,
+                     struct _golsat_timeout *timer)
+{
+    const int total_cells = pat->width * pat->height,
+              max_iterations = (int)(log2(total_cells) + 1),
+              base_timeout = (timer->remaining_total / max_iterations)
+                             + timer->unused_time;
+    return base_timeout * (1 + (evolutions / 10));
+}
 
 static struct _golsat_next
 _golsat_next_search(const char command[1024])
@@ -48,14 +69,17 @@ _golsat_next_search(const char command[1024])
         if ((sscanf(output, "Found object (gen %*d, cells %d",
                     &result.live_cells))) {
             const size_t start_idx = strcspn(output, "\n") + 1,
-                         end_idx = strcspn(output + start_idx, ">");
-            result.last_state =
-                strndup(output + start_idx, end_idx - start_idx);
+                         length = strspn(output + start_idx, "OX1.0 \n");
+            result.last_state = strndup(output + start_idx, length);
             if (!result.last_state) perror("strndup");
             break;
         }
         else if (!strncmp(output, "No such object",
                           sizeof("No such object") - 1)) {
+            break;
+        }
+        else if (!strncmp(output, "Timeout", sizeof("Timeout") - 1)) {
+            result.live_cells = -1;
             break;
         }
     }
@@ -108,8 +132,15 @@ main(int argc, char **argv)
     char command[1024];
     FILE *f_pattern;
 
-    int low = 0, high = INT_MAX, mid, best_value;
+    int low = 0, high, mid, best_value;
     char *current_best = NULL;
+
+    struct _golsat_timeout timer = { 0 };
+    time_t iter_start, actual_time;
+
+    timer.start_time = time(NULL);
+    timer.remaining_total = MAX_TOTAL_TIME_SECS;
+    timer.unused_time = 0;
 
     if (!golsat_commandline_parse(argc, argv, &options)) {
         return EXIT_FAILURE;
@@ -125,6 +156,7 @@ main(int argc, char **argv)
         fprintf(stderr, "-- Error: Pattern creation failed.\n");
         goto _cleanup_file;
     }
+    high = pat->width * pat->height;
 
     if (!_golsat_convert_cnv_to_lifesrc_format(pat)) {
         fprintf(stderr, "-- Error: Conversion to lifesrc format failed.\n");
@@ -132,21 +164,43 @@ main(int argc, char **argv)
     }
 
     while (low <= high) {
+        const int timeout =
+            _golsat_next_timeout(pat, options.evolutions, &timer);
+
         mid = (low + high) / 2;
-        sprintf(command, "./lifesrc -r%d -c%d -g%d -f -p -mt%d -i %s",
-                pat->height, pat->width, options.evolutions + 1, mid,
+
+        sprintf(command,
+                "timeout %d ./lifesrc -r%d -c%d -g%d -a -p -mt%d -i %s"
+                " || echo 'Timeout'",
+                timeout, pat->height, pat->width, options.evolutions + 1, mid,
                 TMPFILE_NAME);
 
-        printf("-- Searching for mt value: %d\n", mid);
-        if ((next = _golsat_next_search(command)), next.last_state != NULL) {
-            printf("\t-- Found solution for mt value: %d\n", next.live_cells);
+        printf("-- Searching for mt value: %d\t| Timeout: %d seconds\n", mid,
+               timeout);
+
+        iter_start = time(NULL);
+        next = _golsat_next_search(command);
+        actual_time = time(NULL) - iter_start;
+        timer.unused_time = timeout - actual_time;
+        timer.remaining_total =
+            MAX_TOTAL_TIME_SECS - (time(NULL) - timer.start_time);
+
+        if (timer.remaining_total <= 0) {
+            fprintf(stderr, "-- Error: Total time limit reached\n");
+            break;
+        }
+
+        if (next.last_state != NULL) {
+            printf("\t-- Found solution for mt value: %d (took %ld secs)\n",
+                   next.live_cells, actual_time);
             if (current_best) free(current_best);
             current_best = next.last_state;
             best_value = next.live_cells;
             high = next.live_cells - 1;
         }
         else {
-            printf("\t-- No solution for mt value: %d\n", mid);
+            printf("\t-- %s for mt value: %d\n",
+                   next.live_cells == -1 ? "Timeout" : "No solution", mid);
             low = mid + 1;
         }
     }

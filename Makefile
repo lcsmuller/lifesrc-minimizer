@@ -13,6 +13,7 @@ MAIN       = gol-sat
 
 CFLAGS  = -std=c89 -D_POSIX_C_SOURCE=200809L -I$(SRC_DIR) \
           -I$(LIFESRC_INCLUDE_DIR) -Wall -Wextra -Wpedantic
+LDLIBS  = -lm
 
 all: $(MAIN)
 
