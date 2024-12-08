@@ -12,5 +12,5 @@
 !.clang-format
 !patterns/
 !patterns/*.txt
-!lifesrc-3.8
-!lifesrc-3.8/*
+!lifesrc-*
+!lifesrc-*/*

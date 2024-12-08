@@ -1,7 +1,7 @@
 CC = cc
 
 SRC_DIR             = src
-LIFESRC_VERSION     = 3.8
+LIFESRC_VERSION     = 3.8+lcsmuller1
 LIFESRC_DIR         = lifesrc-$(LIFESRC_VERSION)
 LIFESRC_INCLUDE_DIR = $(LIFESRC_DIR)
 
@@ -26,7 +26,7 @@ $(OBJS): $(LIFESRC)
 
 $(LIFESRC):
 	@ echo "Building lifesrc library..."
-	@ $(MAKE) -C $(LIFESRC_DIR) lifesrcdumb
+	@ $(MAKE) -C $(LIFESRC_DIR) lifesrcdumb CFLAGS=
 	@ cp $(LIFESRC_DIR)/lifesrcdumb ./$(LIFESRC)
 
 clean:
