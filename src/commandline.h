@@ -4,7 +4,7 @@
 struct golsat_options {
     char *pattern;
     int minimize_disable;
-    int border_disable;
+    int debug_enable;
 };
 
 int golsat_commandline_parse(int argc,

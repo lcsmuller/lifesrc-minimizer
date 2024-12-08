@@ -117,6 +117,49 @@ _golsat_convert_cnv_to_lifesrc_format(const struct golsat_pattern *pat)
     return 1;
 }
 
+static void
+_golsat_print_cnv(char *lifesrc_board,
+                  const int width,
+                  const int height,
+                  FILE *out)
+
+{
+    fprintf(out, "%d %d\n", width, height);
+
+    /* UNSAT */
+    if (!lifesrc_board) {
+        int i, j;
+        for (i = 0; i < height; ++i) {
+            for (j = 0; j < width; ++j) {
+                fputc('0', out);
+            }
+            fputc('\n', out);
+        }
+        return;
+    }
+
+    do {
+        switch (*lifesrc_board) {
+        case 'O':
+            fputc('1', out);
+            break;
+        case '.':
+            fputc('0', out);
+            break;
+        case '\n':
+        case '\0':
+            fputc(*lifesrc_board, out);
+            break;
+        case ' ':
+            break;
+        case '?':
+        default:
+            fputc('?', out);
+            break;
+        }
+    } while (*++lifesrc_board != '\0');
+}
+
 int
 main(int argc, char **argv)
 {
@@ -127,7 +170,7 @@ main(int argc, char **argv)
     struct _golsat_next next;
 
     char command[1024];
-    FILE *f_pattern;
+    FILE *f_pattern, *f_stderr;
 
     int low = 0, high, mid, best_value;
     char *current_best = NULL;
@@ -142,21 +185,22 @@ main(int argc, char **argv)
     if (!golsat_commandline_parse(argc, argv, &options)) {
         return EXIT_FAILURE;
     }
+    f_stderr = options.debug_enable ? stderr : fopen("/dev/null", "w");
 
-    printf("-- Reading pattern from file: %s\n", options.pattern);
+    fprintf(f_stderr, "-- Reading pattern from file: %s\n", options.pattern);
     if (!(f_pattern = fopen(options.pattern, "r"))) {
-        fprintf(stderr, "-- Error: Cannot open %s\n", options.pattern);
+        fprintf(f_stderr, "-- Error: Cannot open %s\n", options.pattern);
         return EXIT_FAILURE;
     }
 
-    if (!(pat = golsat_pattern_create(f_pattern, options.border_disable))) {
-        fprintf(stderr, "-- Error: Pattern creation failed.\n");
+    if (!(pat = golsat_pattern_create(f_pattern))) {
+        fprintf(f_stderr, "-- Error: Pattern creation failed.\n");
         goto _cleanup_file;
     }
     high = pat->width * pat->height;
 
     if (!_golsat_convert_cnv_to_lifesrc_format(pat)) {
-        fprintf(stderr, "-- Error: Conversion to lifesrc format failed.\n");
+        fprintf(f_stderr, "-- Error: Conversion to lifesrc format failed.\n");
         goto _cleanup_pat;
     }
 
@@ -170,8 +214,9 @@ main(int argc, char **argv)
                 " || echo 'Timeout'",
                 timeout, pat->height, pat->width, mid, TMPFILE_NAME);
 
-        printf("-- Searching for mt value: %d\t| Timeout: %d seconds\n", mid,
-               timeout);
+        fprintf(f_stderr,
+                "-- Searching for mt value: %d\t| Timeout: %d seconds\n", mid,
+                timeout);
 
         iter_start = time(NULL);
         next = _golsat_next_search(command);
@@ -181,21 +226,22 @@ main(int argc, char **argv)
             MAX_TOTAL_TIME_SECS - (time(NULL) - timer.start_time);
 
         if (timer.remaining_total <= 0) {
-            fprintf(stderr, "-- Error: Total time limit reached\n");
+            fprintf(f_stderr, "-- Error: Total time limit reached\n");
             break;
         }
 
         if (next.last_state != NULL) {
-            printf("\t-- Found solution for mt value: %d (took %ld secs)\n",
-                   next.live_cells, actual_time);
+            fprintf(f_stderr,
+                    "\t-- Found solution for mt value: %d (took %ld secs)\n",
+                    next.live_cells, actual_time);
             if (current_best) free(current_best);
             current_best = next.last_state;
             best_value = next.live_cells;
             high = next.live_cells - 1;
         }
         else {
-            printf("\t-- %s for mt value: %d\n",
-                   next.live_cells == -1 ? "Timeout" : "No solution", mid);
+            fprintf(f_stderr, "\t-- %s for mt value: %d\n",
+                    next.live_cells == -1 ? "Timeout" : "No solution", mid);
             low = mid + 1;
         }
 
@@ -203,20 +249,22 @@ main(int argc, char **argv)
     }
 
     if (!current_best) {
-        fprintf(stderr, "-- Error: No SAT solution found\n");
-        goto _cleanup_pat;
+        fprintf(f_stderr, "-- Error: No SAT solution found\n");
     }
-
-    /* the minimum value that produces a SAT solution */
-    printf("-- Minimum mt value for SAT solution: %d\n%d %d\n%s", best_value,
-           pat->width, pat->height, current_best);
-    exit_status = EXIT_SUCCESS;
+    else {
+        fprintf(f_stderr,
+                "-- Minimum mt value for SAT solution: %d\n%d %d\n%s\n",
+                best_value, pat->width, pat->height, current_best);
+        exit_status = EXIT_SUCCESS;
+    }
+    _golsat_print_cnv(current_best, pat->width, pat->height, stdout);
 
 _cleanup_pat:
     if (current_best) free(current_best);
     golsat_pattern_cleanup(pat);
 _cleanup_file:
     fclose(f_pattern);
+    if (options.debug_enable) fclose(f_stderr);
 
     return exit_status;
 }

@@ -10,9 +10,9 @@ _golsat_commandline_usage(char *program)
     printf("Usage: %s [OPTIONS]... PATTERN_FILE\n"
            "Options:\n"
            "  -h, --help             Display this help message\n"
-           "  -B, --borderDisable    Disable border check (default is false)\n"
            "  -M, --minimizeDisable  Disable minimization of true literals "
-           "(default is false)\n",
+           "(default is false)\n"
+           "  -d, --debug            Enable debug output\n",
            program);
 }
 
@@ -26,13 +26,13 @@ golsat_commandline_parse(int argc, char **argv, struct golsat_options *options)
     options->pattern = NULL;
     options->minimize_disable = 0;
 
-    while ((opt = getopt(argc, argv, "BMh")) != -1) {
+    while ((opt = getopt(argc, argv, "dMh")) != -1) {
         switch (opt) {
         case 'M':
             options->minimize_disable = 1;
             break;
-        case 'B':
-            options->border_disable = 1;
+        case 'd':
+            options->debug_enable = 1;
             break;
         case 'h':
         default:
