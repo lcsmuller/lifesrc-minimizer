@@ -14,14 +14,14 @@ popen2(const char *cmdline, struct popen2 *childinfo)
     if (pipe(pipe_stdin)) return -1;
     if (pipe(pipe_stdout)) return -1;
 #ifdef GOLSAT_DEBUG
-    printf("pipe_stdin[0] = %d, pipe_stdin[1] = %d\n", pipe_stdin[0],
-           pipe_stdin[1]);
-    printf("pipe_stdout[0] = %d, pipe_stdout[1] = %d\n", pipe_stdout[0],
-           pipe_stdout[1]);
+    fprintf(stderr, "pipe_stdin[0] = %d, pipe_stdin[1] = %d\n", pipe_stdin[0],
+            pipe_stdin[1]);
+    fprintf(stderr, "pipe_stdout[0] = %d, pipe_stdout[1] = %d\n",
+            pipe_stdout[0], pipe_stdout[1]);
 #endif
     p = fork();
-    if (p < 0) return p; /* Fork failed */
-    if (p == 0) { /* child */
+    if (p < 0) return p;
+    if (p == 0) {
         close(pipe_stdin[1]);
         dup2(pipe_stdin[0], 0);
         close(pipe_stdout[0]);

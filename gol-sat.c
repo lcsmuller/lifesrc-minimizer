@@ -106,9 +106,6 @@ _golsat_convert_cnv_to_lifesrc_format(const struct golsat_pattern *pat)
             case GOLSAT_CELLSTATE_DEAD:
                 fputc('.', f_tmp);
                 break;
-            case GOLSAT_CELLSTATE_FIXED_DEAD:
-                fputc(':', f_tmp);
-                break;
             case GOLSAT_CELLSTATE_UNKNOWN:
                 fputc('?', f_tmp);
                 break;

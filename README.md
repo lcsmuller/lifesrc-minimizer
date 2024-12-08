@@ -15,7 +15,6 @@ A `lifesrc` backwards solver for Conway's "Game of Life" that minimizes live cel
 Usage: ./gol-sat [OPTIONS]... PATTERN_FILE
 Options:
     -h, --help             Display this help message
-    -B, --borderDisable    Disable border check (default is false)
     -M, --minimizeDisable  Disable minimization of true literals (default is false)
 ```
 

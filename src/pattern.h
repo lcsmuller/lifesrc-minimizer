@@ -4,8 +4,7 @@
 enum golsat_cellstate {
     GOLSAT_CELLSTATE_ALIVE,
     GOLSAT_CELLSTATE_DEAD,
-    GOLSAT_CELLSTATE_UNKNOWN,
-    GOLSAT_CELLSTATE_FIXED_DEAD
+    GOLSAT_CELLSTATE_UNKNOWN
 };
 
 struct golsat_pattern {
@@ -14,7 +13,7 @@ struct golsat_pattern {
     enum golsat_cellstate *cells;
 };
 
-struct golsat_pattern *golsat_pattern_create(FILE *file, int border_disable);
+struct golsat_pattern *golsat_pattern_create(FILE *file);
 void golsat_pattern_cleanup(struct golsat_pattern *pattern);
 enum golsat_cellstate golsat_pattern_get_cell(
     const struct golsat_pattern *pattern, int x, int y);
